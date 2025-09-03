@@ -5,9 +5,24 @@ data:
 training:
   random_seed: 42
   test_size: 0.2
+  cross_validation:
+    enabled: true
+    folds: 5
 
 model:
+  # Choose which model to use: "decision_tree" or "random_forest"
+  type: random_forest
+
   decision_tree:
     max_depth: 6
+    min_samples_split: 2
+    min_samples_leaf: 1
+
+  random_forest:
+    n_estimators: 100
+    max_depth: 10
+    min_samples_split: 5
+    min_samples_leaf: 2
+    max_features: sqrt # Can be: "sqrt", "log2", or a number/fraction
 
 artifacts_dir: artifacts
