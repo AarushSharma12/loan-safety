@@ -7,8 +7,6 @@
 
 Predict loan risk with state-of-the-art machine learning models. Compare **Decision Trees** and **Random Forests** to identify safe vs risky loans using LendingClub data.
 
-![Loan Safety Platform](https://via.placeholder.com/800x400/4a90e2/ffffff?text=Loan+Safety+ML+Platform)
-
 ## ✨ Features
 
 - **🌲 Decision Trees & 🌳 Random Forests** - Choose the right model for your needs
@@ -31,12 +29,6 @@ python src/train.py --config configs/config.yaml --model random_forest
 # 3. Launch the web interface
 streamlit run app.py
 ```
-
-## 📋 Prerequisites
-
-- Python 3.11+
-- 4GB RAM minimum (8GB recommended for Random Forest)
-- LendingClub dataset in `data/raw/lending-club-data.csv`
 
 ## 🛠️ Installation
 
@@ -99,31 +91,6 @@ loan-safety-ml/
 └── tests/                  # Unit tests
 ```
 
-## ⚙️ Configuration
-
-Edit `configs/config.yaml` to customize:
-
-```yaml
-model:
-  type: random_forest # or decision_tree
-
-  random_forest:
-    n_estimators: 100 # Number of trees
-    max_depth: 10 # Maximum tree depth
-    max_features: sqrt # Feature sampling strategy
-
-  decision_tree:
-    max_depth: 6 # Maximum tree depth
-    min_samples_split: 2
-
-training:
-  test_size: 0.2 # 80/20 train-test split
-  random_seed: 42 # For reproducibility
-  cross_validation:
-    enabled: true # Enable k-fold CV
-    folds: 5
-```
-
 ## 📊 Model Comparison
 
 | Model             | Pros                                                                 | Cons                                                       | Best For                             |
@@ -183,78 +150,8 @@ The platform provides comprehensive evaluation:
 ### Via Web Interface
 
 1. Launch app: `streamlit run app.py`
-2. Go to "🔮 Predict" tab
-3. Select model and enter loan features
-4. Get instant risk assessment
-
-### Via Command Line
-
-```bash
-# Create a JSON file with features
-echo '{
-  "grade": "B",
-  "sub_grade": "B2",
-  "home_ownership": "RENT",
-  "purpose": "debt_consolidation",
-  "term": "36 months",
-  "emp_length_num": 5.0,
-  "dti": 15.5,
-  "revol_util": 45.0,
-  "total_rec_late_fee": 0.0,
-  "short_emp": 0,
-  "last_delinq_none": 1,
-  "last_major_derog_none": 1
-}' > sample_loan.json
-
-# Predict
-python src/predict.py --model artifacts/model_*.joblib --input sample_loan.json
-```
-
-## 🧪 Testing
-
-```bash
-# Run all tests
-pytest tests/ -v
-
-# Run with coverage
-pytest tests/ --cov=src --cov-report=html
-```
-
-## 📚 Advanced Usage
-
-### Cross-Validation Training
-
-```python
-# In config.yaml
-training:
-  cross_validation:
-    enabled: true
-    folds: 5
-```
-
-### Hyperparameter Tuning
-
-```python
-# Coming soon: Grid search and Bayesian optimization
-python src/tune.py --model random_forest --method grid
-```
-
-### Model Serving API
-
-```python
-# Coming soon: FastAPI endpoint
-uvicorn api:app --reload
-```
-
-## 🤝 Contributing
-
-We welcome contributions! Please see our [Contributing Guidelines](CONTRIBUTING.md).
-
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit changes (`git commit -m 'Add amazing feature'`)
-4. Push to branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
+2. Select model and enter loan features
+3. Get instant risk assessment
 
 ## 📄 License
 
@@ -268,10 +165,8 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## 📞 Contact
 
-**Author**: Aarush Sharma  
-**Email**: your.email@example.com  
-**Project Link**: [https://github.com/yourusername/loan-safety-ml](https://github.com/yourusername/loan-safety-ml)
+**Author**: Aarush Sharma
 
 ---
 
-<p align="center">Made with ❤️ and Python</p>
+<p align="center">Made with Python</p>
