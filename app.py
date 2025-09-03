@@ -10,7 +10,7 @@ import yaml
 ROOT = Path(__file__).resolve().parent
 sys.path.append(str(ROOT / "src"))
 
-# import your project code
+# import project code
 from train import train as train_fn
 from data import load_raw, ensure_target, prepare_labels
 from features import get_feature_lists, build_preprocessor, split_X_y
@@ -26,10 +26,8 @@ def load_cfg(cfg_path: str):
 @st.cache_data
 def load_choices(csv_path: str, target_preferred: str):
     df = load_raw(csv_path)
-    # derive target if needed so we can drop it later
     df, target = ensure_target(df, preferred_target=target_preferred)
     cat_cols, num_cols = get_feature_lists()
-    # keep only the columns we need (skip rows with NAs on needed cols)
     keep = [c for c in cat_cols + num_cols if c in df.columns]
     df_small = df[keep].dropna().head(10_000)  # limit for speed
     choices = {
@@ -79,7 +77,6 @@ with tab_train:
                 model_path = train_fn(cfg_path)
                 st.session_state["model_path"] = model_path
                 st.success(f"Model saved: {model_path}")
-                # quick whole-dataset metrics for a friendly number
                 bundle = joblib.load(model_path)
                 pipe = bundle["pipeline"]
                 df = load_raw(csv_path)
@@ -111,7 +108,6 @@ with tab_predict:
             else:
                 st.warning("No model found in artifacts/")
 
-    # Load choices for categorical widgets
     try:
         choices, cat_cols, num_cols = load_choices(csv_path, target_name)
     except Exception as e:
@@ -119,7 +115,6 @@ with tab_predict:
         st.stop()
 
     st.write("Fill the features below, then click **Predict**.")
-    # Build input form using dataset-driven choices where possible
     with st.form("predict_form"):
         inputs = {}
         for c in cat_cols:
@@ -129,7 +124,6 @@ with tab_predict:
             else:
                 inputs[c] = st.text_input(c, "", key=f"cat_{c}")
         for c in num_cols:
-            # numeric inputs as float; allow empty -> 0.0
             val = st.text_input(c, "", key=f"num_{c}", help="Numeric")
             try:
                 inputs[c] = float(val) if val != "" else 0.0
