@@ -10,7 +10,7 @@ from sklearn.pipeline import Pipeline
 from sklearn.tree import DecisionTreeClassifier
 
 from features import get_feature_lists, build_preprocessor, split_X_y
-from data import load_raw, prepare_labels
+from data import load_raw, ensure_target, prepare_labels
 
 
 def train(config_path: str = "configs/config.yaml") -> str:
@@ -24,25 +24,25 @@ def train(config_path: str = "configs/config.yaml") -> str:
 
     cat, num = get_feature_lists()
     df = load_raw(raw_csv)
-    # Keep only selected columns + target
-    keep_cols = cat + num + [target_col]
+
+    df, resolved_target = ensure_target(df, preferred_target=target_col)
+
+    keep_cols = cat + num + [resolved_target]
     missing = [c for c in keep_cols if c not in df.columns]
     if missing:
         raise KeyError(f"Missing columns in CSV: {missing}")
 
     df = df[keep_cols]
-    df = prepare_labels(df, target_col=target_col)
+    df = prepare_labels(df, target_col=resolved_target)
 
-    X, y = split_X_y(df, target_col)
+    X, y = split_X_y(df, resolved_target)
 
     X_train, X_val, y_train, y_val = train_test_split(
         X, y, test_size=test_size, stratify=y, random_state=seed
     )
 
     pre = build_preprocessor(cat, num)
-    clf = DecisionTreeClassifier(
-        max_depth=max_depth, class_weight="balanced", random_state=seed
-    )
+    clf = DecisionTreeClassifier(max_depth=max_depth, class_weight="balanced", random_state=seed)
     pipe = Pipeline(steps=[("pre", pre), ("model", clf)])
     pipe.fit(X_train, y_train)
 
@@ -50,9 +50,7 @@ def train(config_path: str = "configs/config.yaml") -> str:
     artifacts_dir.mkdir(parents=True, exist_ok=True)
     ts = time.strftime("%Y%m%d-%H%M%S")
     model_path = artifacts_dir / f"model_decision_tree_depth{max_depth}_{ts}.joblib"
-    joblib.dump(
-        {"pipeline": pipe, "features": {"categorical": cat, "numeric": num}}, model_path
-    )
+    joblib.dump({"pipeline": pipe, "features": {"categorical": cat, "numeric": num}}, model_path)
 
     # quick val accuracy
     acc = pipe.score(X_val, y_val)
