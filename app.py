@@ -1,203 +1,151 @@
-import sys, json
-from pathlib import Path
-
 import streamlit as st
 import pandas as pd
 import joblib
-import yaml
-import numpy as np
-from datetime import datetime
+from pathlib import Path
+import sys
 
-# make 'src/' importable
-ROOT = Path(__file__).resolve().parent
-sys.path.append(str(ROOT / "src"))
-
-# import project code
-from train import train as train_fn
+# Add src to path
+sys.path.append(str(Path(__file__).parent / "src"))
 from data import load_raw, ensure_target, prepare_labels
-from features import get_feature_lists, build_preprocessor, split_X_y
-from evaluate import evaluate as evaluate_fn
+from features import split_X_y
 
-CFG_PATH_DEFAULT = "configs/config.yaml"
+# Page config
+st.set_page_config(page_title="Loan Risk Checker", page_icon="💰", layout="centered")
 
+# Title
+st.title("💰 Loan Risk Checker")
+st.markdown("Check if a loan is **safe** or **risky** in seconds")
 
-@st.cache_data
-def load_cfg(cfg_path: str):
-    return yaml.safe_load(Path(cfg_path).read_text())
+# Initialize session state
+if "model" not in st.session_state:
+    st.session_state.model = None
+    st.session_state.model_name = None
 
-
-@st.cache_data
-def load_choices(csv_path: str, target_preferred: str):
-    df = load_raw(csv_path)
-    df, target = ensure_target(df, preferred_target=target_preferred)
-    cat_cols, num_cols = get_feature_lists()
-    keep = [c for c in cat_cols + num_cols if c in df.columns]
-    df_small = df[keep].dropna().head(10_000)  # limit for speed
-    choices = {
-        c: sorted(map(str, df_small[c].dropna().unique().tolist()))
-        for c in cat_cols
-        if c in df_small
-    }
-    return choices, cat_cols, num_cols
-
-
-def get_available_models():
-    """Get list of available models with metadata."""
-    arts_dir = ROOT / "artifacts"
-    if not arts_dir.exists():
-        return []
-    
-    models = []
-    for model_path in sorted(arts_dir.glob("*.joblib"), key=lambda p: p.stat().st_mtime, reverse=True):
-        try:
-            bundle = joblib.load(model_path)
-            model_type = bundle.get("model_type", "unknown")
-            val_score = bundle.get("validation_score", None)
-            
-            # Parse timestamp from filename
-            name_parts = model_path.stem.split('_')
-            timestamp_str = name_parts[-1] if name_parts else ""
-            
-            models.append({
-                "path": str(model_path),
-                "name": model_path.name,
-                "type": model_type,
-                "val_score": val_score,
-                "timestamp": timestamp_str,
-                "size_mb": model_path.stat().st_size / (1024 * 1024)
-            })
-        except:
-            continue
-    
-    return models
-
-
-st.set_page_config(page_title="🎯 Loan Safety ML Platform", layout="wide", initial_sidebar_state="expanded")
-
-# Header
-st.title("🎯 Loan Safety ML Platform")
-st.markdown("**Predict loan risk with Decision Trees and Random Forests**")
-
+# Sidebar for model selection
 with st.sidebar:
-    st.header("⚙️ Configuration")
-    cfg_path = st.text_input("Config path", CFG_PATH_DEFAULT)
-    try:
-        cfg = load_cfg(cfg_path)
-        st.success("Config loaded ✅")
-    except Exception as e:
-        st.error(f"Failed to load config: {e}")
-        st.stop()
+    st.header("Setup")
 
-    csv_path = cfg["data"]["raw_csv"]
-    target_name = cfg["data"]["target"]
-    
-    st.markdown("### Dataset Info")
-    st.markdown(f"**File:** `{csv_path}`")
-    st.markdown(f"**Target:** `{target_name}`")
-    st.markdown(f"**Test size:** {cfg['training']['test_size']*100:.0f}%")
-    st.markdown(f"**Random seed:** {cfg['training']['random_seed']}")
-    
-    st.markdown("### Model Configuration")
-    current_model_type = cfg.get("model", {}).get("type", "decision_tree")
-    st.markdown(f"**Default type:** {current_model_type}")
-    
-    if current_model_type == "decision_tree":
-        params = cfg["model"]["decision_tree"]
-        st.markdown(f"**Max depth:** {params['max_depth']}")
-    else:
-        params = cfg["model"]["random_forest"]
-        st.markdown(f"**Trees:** {params['n_estimators']}")
-        st.markdown(f"**Max depth:** {params['max_depth']}")
+    # Find available models
+    models_dir = Path("artifacts")
+    if models_dir.exists():
+        models = list(models_dir.glob("*.joblib"))
+        if models:
+            # Sort by newest first
+            models.sort(key=lambda x: x.stat().st_mtime, reverse=True)
 
-# Main tabs
-tab_train, tab_evaluate, tab_predict, tab_compare = st.tabs(
-    ["🛠️ Train Models", "📊 Evaluate", "🔮 Predict", "🏆 Compare Models"]
-)
+            # Simple model selector
+            model_names = [m.name for m in models]
+            selected = st.selectbox("Select Model", model_names, help="Choose a trained model")
 
-with tab_train:
-    st.subheader("Train Machine Learning Models")
-    
-    col1, col2 = st.columns([1, 1])
-    
-    with col1:
-        st.markdown("### Model Selection")
-        model_choice = st.radio(
-            "Choose model type:",
-            ["decision_tree", "random_forest"],
-            index=1 if current_model_type == "random_forest" else 0,
-            format_func=lambda x: "🌲 Decision Tree" if x == "decision_tree" else "🌳 Random Forest"
-        )
-        
-        # Show relevant parameters
-        if model_choice == "decision_tree":
-            st.markdown("**Decision Tree Parameters:**")
-            dt_params = cfg["model"]["decision_tree"]
-            st.code(f"max_depth: {dt_params['max_depth']}\n"
-                   f"min_samples_split: {dt_params.get('min_samples_split', 2)}\n"
-                   f"min_samples_leaf: {dt_params.get('min_samples_leaf', 1)}")
+            if st.button("Load Model"):
+                model_path = models_dir / selected
+                bundle = joblib.load(model_path)
+                st.session_state.model = bundle["pipeline"]
+                st.session_state.model_name = selected
+                st.success("✅ Model loaded!")
         else:
-            st.markdown("**Random Forest Parameters:**")
-            rf_params = cfg["model"]["random_forest"]
-            st.code(f"n_estimators: {rf_params['n_estimators']}\n"
-                   f"max_depth: {rf_params['max_depth']}\n"
-                   f"max_features: {rf_params['max_features']}\n"
-                   f"min_samples_split: {rf_params.get('min_samples_split', 5)}")
-    
-    with col2:
-        st.markdown("### Training Options")
-        use_cv = st.checkbox("Enable cross-validation", value=cfg["training"]["cross_validation"]["enabled"])
-        if use_cv:
-            cv_folds = st.slider("CV folds", 3, 10, cfg["training"]["cross_validation"]["folds"])
-        
-        st.markdown("### Start Training")
-        if st.button(f"🚀 Train {model_choice.replace('_', ' ').title()}", type="primary"):
-            with st.spinner(f"Training {model_choice}... This may take a moment for Random Forest."):
-                try:
-                    # Update config temporarily for CV
-                    if use_cv:
-                        cfg["training"]["cross_validation"]["enabled"] = True
-                        cfg["training"]["cross_validation"]["folds"] = cv_folds if use_cv else 5
-                    
-                    # Save temporary config
-                    temp_cfg = Path("configs/temp_config.yaml")
-                    with open(temp_cfg, 'w') as f:
-                        yaml.dump(cfg, f)
-                    
-                    # Train model
-                    model_path = train_fn(str(temp_cfg), model_choice)
-                    st.session_state["last_model_path"] = model_path
-                    
-                    # Load results
-                    bundle = joblib.load(model_path)
-                    
-                    # Display results
-                    st.success(f"✅ Model trained successfully!")
-                    
-                    col1_res, col2_res, col3_res = st.columns(3)
-                    with col1_res:
-                        st.metric("Model Type", model_choice.replace('_', ' ').title())
-                    with col2_res:
-                        st.metric("Training Accuracy", f"{bundle.get('training_score', 0):.3f}")
-                    with col3_res:
-                        st.metric("Validation Accuracy", f"{bundle.get('validation_score', 0):.3f}")
-                    
-                    st.info(f"Model saved to: `{model_path}`")
-                    
-                except Exception as e:
-                    st.error(f"Training failed: {e}")
-
-with tab_evaluate:
-    st.subheader("📊 Model Evaluation")
-    
-    models = get_available_models()
-    
-    if not models:
-        st.warning("No trained models found. Please train a model first.")
+            st.error("No models found. Train one first!")
     else:
-        # Model selection
-        model_names = [f"{m['type']} - {m['timestamp']} (Val: {m['val_score']:.3f})" 
-                      if m['val_score'] else f"{m['type']} - {m['timestamp']}"
-                      for m in models]
-        
-        selected_idx = st.selectbox("Select model to evaluate:", 
-                                    range(len(models)),
+        st.error("No artifacts folder found!")
+
+    if st.session_state.model:
+        st.success(f"Using: {st.session_state.model_name}")
+
+# Main interface
+if st.session_state.model is None:
+    st.info("👈 Please load a model from the sidebar first")
+else:
+    st.subheader("Enter Loan Details")
+
+    # Create two columns for input
+    col1, col2 = st.columns(2)
+
+    with col1:
+        # Categorical inputs with simple defaults
+        grade = st.selectbox("Grade", ["A", "B", "C", "D", "E", "F", "G"])
+        sub_grade = st.selectbox(
+            "Sub-grade", [f"{grade}1", f"{grade}2", f"{grade}3", f"{grade}4", f"{grade}5"]
+        )
+        home = st.selectbox("Home Ownership", ["RENT", "OWN", "MORTGAGE", "OTHER"])
+        purpose = st.selectbox(
+            "Loan Purpose",
+            [
+                "debt_consolidation",
+                "credit_card",
+                "home_improvement",
+                "major_purchase",
+                "medical",
+                "small_business",
+                "other",
+            ],
+        )
+        term = st.selectbox("Term", ["36 months", "60 months"])
+
+    with col2:
+        # Numeric inputs with reasonable defaults
+        emp_years = st.number_input("Years Employed", min_value=0, max_value=50, value=5)
+        dti = st.number_input("Debt-to-Income Ratio", min_value=0.0, max_value=100.0, value=15.0)
+        revol_util = st.number_input(
+            "Credit Utilization %", min_value=0.0, max_value=100.0, value=30.0
+        )
+        late_fees = st.number_input("Total Late Fees", min_value=0.0, value=0.0)
+
+        # Binary flags (simplified)
+        no_delinq = st.checkbox("No recent delinquencies", value=True)
+        no_derog = st.checkbox("No derogatory marks", value=True)
+        short_emp = st.checkbox("Employed < 1 year", value=False)
+
+    # Predict button
+    if st.button("🔍 Check Risk", type="primary", use_container_width=True):
+        # Prepare input
+        input_data = {
+            "grade": grade,
+            "sub_grade": sub_grade,
+            "home_ownership": home,
+            "purpose": purpose,
+            "term": term,
+            "emp_length_num": float(emp_years),
+            "dti": float(dti),
+            "revol_util": float(revol_util),
+            "total_rec_late_fee": float(late_fees),
+            "last_delinq_none": int(no_delinq),
+            "last_major_derog_none": int(no_derog),
+            "short_emp": int(short_emp),
+        }
+
+        # Make prediction
+        df = pd.DataFrame([input_data])
+
+        try:
+            # Get prediction
+            prob = st.session_state.model.predict_proba(df)[0][1]
+            prediction = "SAFE" if prob >= 0.5 else "RISKY"
+
+            # Display result with clear visual feedback
+            st.markdown("---")
+
+            if prediction == "SAFE":
+                st.success(f"### ✅ {prediction} LOAN")
+                st.markdown(f"**Confidence:** {prob:.1%} chance of being safe")
+            else:
+                st.error(f"### ⚠️ {prediction} LOAN")
+                st.markdown(f"**Confidence:** {(1-prob):.1%} chance of being risky")
+
+            # Simple risk meter
+            st.markdown("**Risk Level:**")
+            risk = 1 - prob
+            if risk < 0.3:
+                st.progress(risk, text="Low Risk")
+            elif risk < 0.7:
+                st.progress(risk, text="Medium Risk")
+            else:
+                st.progress(risk, text="High Risk")
+
+        except Exception as e:
+            st.error(f"Error making prediction: {e}")
+
+# Footer
+st.markdown("---")
+st.markdown("<div style='text-align: center; color: gray;'>", unsafe_allow_html=True)
+st.caption("Simple Loan Risk Assessment Tool")
+st.markdown("</div>", unsafe_allow_html=True)
